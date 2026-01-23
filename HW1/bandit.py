@@ -70,4 +70,4 @@ def plot_reward_dist(reward_data):
     ax.set_ylabel("Reward Distribution")
     plt.savefig("plots/RewardDistribution.png")
 
-plot_reward_dist(MultiArmBandit(10, 1000))
+plot_reward_dist(MultiArmBandit(10, 10_000))

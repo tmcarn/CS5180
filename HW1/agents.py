@@ -114,7 +114,12 @@ class UCBAgent(Agent):
     
     def choose_action(self) -> int:
         t = np.sum(self.N) # Total steps taken 
-        action_update = self.Q + (self.c * np.sqrt(np.log(t+1) / (self.N+1)))
+
+        if t == 0 or np.any(self.N == 0): # tries each bandit once before doing UCB Updates
+            untried = np.where(self.N == 0)[0]
+            return np.random.choice(untried)
+        
+        action_update = self.Q + (self.c * np.sqrt(np.log(t) / (self.N)))
         action = self.argmax(action_update)
         return action
         
