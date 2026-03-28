@@ -16,7 +16,7 @@ train_parameters = {
     
     'hidden_layer_num': 2,
     'hidden_layer_dim': 128,
-    'gamma': 0.99,
+    'gamma': 1.0,
 
     'total_training_time_step': 500_000,
 

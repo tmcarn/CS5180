@@ -4,22 +4,22 @@ import numpy as np
 import torch
 from torch import nn
 import tqdm
+from qnets import MLPQNet
 
 
 class DQNAgent(object):
     def __init__(self, env, params):
         
         self.env = env
-
         self.params = params
-
         self.step_num = 0
+
+        self.epsilon_scheduler = params["epsilon_scheduler"]
 
         self.action_space_list = params["action_space"]
         self.action_space = params["action_dim"]
 
         self.observation_space = params["observation_dim"]
-        print(f"Observation space: {self.observation_space}, Action space: {self.action_space}")
 
         self.gamma = params["gamma"]
 
@@ -37,18 +37,21 @@ class DQNAgent(object):
 
         self.device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
-        self.behavior_model = self.build_model().apply(MLP.customized_weights_init)
-        
+        self.behavior_model = self.build_model()
         self.target_model = self.build_model()
+
         self.target_model.load_state_dict(self.behavior_model.state_dict()) # initialize the target model with the same weights as the behavior model
 
         self.target_model.to(self.device)
         self.behavior_model.to(self.device) 
+        
+        # Save Initial Model with no training
+        self.save_root = f"models/{self.params['model_name']}"
+        name = f"{self.params['model_name']}_step0.pt"
+        self.save(os.path.join(self.save_root, name))
 
         self.loss_fn = nn.MSELoss()
         self.behavior_optimizer = torch.optim.Adam(self.behavior_model.parameters(), lr=params["learning_rate"])
-
-        self.epsilon_scheduler = LinearSchedule(start_value=params["epsilon_start"], end_value=params["epsilon_end"], duration=params["epsilon_duration"])
 
     def behavior_policy(self, state, mode="train"):
         epsilon = self.epsilon_scheduler.get_value(self.step_num)
@@ -70,12 +73,8 @@ class DQNAgent(object):
     
     def build_model(self):
 
-        '''
-        What should the input to the model be? x, y position? Or one-hot encoding of the state? Or something else?
-        '''
-
-        model = MLP(self.observation_space, self.hidden_layer_dim, self.action_space)
-        return model
+        model = MLPQNet(self.observation_space, self.hidden_layer_dim, self.action_space, num_hidden=self.hidden_layer_num)
+        return model.apply(MLPQNet.customized_weights_init)
     
     def update_model(self):
         self.behavior_model.train()
@@ -135,9 +134,8 @@ class DQNAgent(object):
 
                 if G > last_best_return:
                     last_best_return = G
-                    root = f"models/{self.params['model_name']}"
                     name = f"{self.params['model_name']}_best.pt"
-                    self.save(os.path.join(root, name))
+                    self.save(os.path.join(self.save_root, name))
 
                 train_returns.append(G)
                 total_episodes = len(train_returns)
@@ -157,7 +155,7 @@ class DQNAgent(object):
                 state = next_state
                 episode_steps += 1
 
-            if self.replay_buffer.size >= self.batch_size:
+            if self.step_num >= self.params["start_training_step"] and len(self.replay_buffer.buffer) >= self.batch_size:
                 if step % self.params["behavior_update_freq"] == 0:
                     loss = self.update_model().item()
                     train_loss.append(loss)
@@ -165,10 +163,9 @@ class DQNAgent(object):
                 if step % self.params["target_update_freq"] == 0:
                     self.target_model.load_state_dict(self.behavior_model.state_dict())
 
-                if self.save_freq and step > 0 and step % self.save_freq == 0:
-                    root = f"models/{self.params['model_name']}"
+                if step % self.save_freq == self.save_freq - 1:
                     name = f"{self.params['model_name']}_step{step}.pt"
-                    self.save(os.path.join(root, name))
+                    self.save(os.path.join(self.save_root, name))
             
         return train_returns, train_loss
     
@@ -238,51 +235,4 @@ class ReplayBuffer(object):
         indices = np.random.choice(self.size, batch_size, replace=False)
         batch = [self.buffer[i] for i in indices]
         return zip(*batch)
-    
-class LinearSchedule(object):
-    """ This schedule returns the value linearly"""
-    def __init__(self, start_value, end_value, duration):
-        # start value
-        self._start_value = start_value
-        # end value
-        self._end_value = end_value
-        # time steps that value changes from the start value to the end value
-        self._duration = duration
-        # difference between the start value and the end value
-        self._schedule_amount = end_value - start_value
 
-    def get_value(self, time):
-        # logic: if time > duration, use the end value, else use the scheduled value
-        return self._start_value + self._schedule_amount * min(1.0, time * 1.0 / self._duration)
-    
-class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(MLP, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, output_size)
-        self.relu = nn.ReLU()
-
-        self.seq_modules = nn.Sequential(
-            self.fc1,
-            self.relu,
-            self.fc2  
-            )
-
-    def forward(self, x):
-        out = self.seq_modules(x)
-        return out
-    
-    # customized weight initialization
-    def customized_weights_init(m):
-        # compute the gain
-        gain = nn.init.calculate_gain('relu')
-        # init the convolutional layer
-        if isinstance(m, nn.Conv2d):
-            # init the params using uniform
-            nn.init.xavier_uniform_(m.weight, gain=gain)
-            nn.init.constant_(m.bias, 0)
-        # init the linear layer
-        if isinstance(m, nn.Linear):
-            # init the params using uniform
-            nn.init.xavier_uniform_(m.weight, gain=gain)
-            nn.init.constant_(m.bias, 0)
