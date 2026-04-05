@@ -103,32 +103,21 @@ if __name__ == "__main__":
     import glob
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoints", nargs="+", help="Paths to checkpoints in order")
     parser.add_argument("--glob", type=str, default=None, help="Glob pattern, e.g. 'models/cartpole_step*.pt'")
     parser.add_argument("--best", type=str, default=None, help="Path to best checkpoint, appended last")
-    parser.add_argument("--env", type=str, default="CartPole-v1")
+    parser.add_argument("--env", type=str)
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--output", type=str, default="policy_progression.mp4")
     parser.add_argument("--fps", type=int, default=30)
     args = parser.parse_args()
 
-    if args.glob:
-        paths = sorted(
-            glob.glob(args.glob),
-            key=lambda p: int("".join(filter(str.isdigit, p.split("step")[-1]))),
-        )
-    else:
-        paths = args.checkpoints
-
-    if args.best:
-        paths.append(args.best)
-
-    print(f"Recording {len(paths)} checkpoints: {paths}")
-
-    if not paths:
-        print("No checkpoints found. Check your --glob pattern or --checkpoints paths.")
-        print(f"  Looked for: {args.glob or args.checkpoints}")
-        exit(1)
+    
+    paths = sorted(
+        glob.glob(args.glob),
+        key=lambda p: int("".join(filter(str.isdigit, p.split("step")[-1]))),
+    )
+    
+    paths.append(args.best)
 
     record_checkpoints(
         checkpoint_paths=paths,

@@ -66,7 +66,6 @@ def plot_curves(arr_list, legend_list, color_list, ylabel, fig_title, path):
     ax.legend(handles=h_list)
     plt.savefig(path)
 
-
 def run_training(env, train_parameters, num_trials=10, name=""):
     all_returns = []
     all_loss = []
